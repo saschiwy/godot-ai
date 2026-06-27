@@ -1085,6 +1085,84 @@ func test_incompatible_server_hides_http_only_port_picker() -> void:
 	assert_false(_dock._port_picker_panel.visible, "HTTP-only picker must stay hidden")
 
 
+func test_foreign_incompatible_body_names_concrete_free_ports() -> void:
+	## Issue #607 cheap version: the foreign-occupant crash body should hand
+	## the user concrete free ports (reservation-aware on Windows) and point
+	## them at Editor Settings + the client reconfigure, instead of leaving
+	## them to hunt for a port themselves. Names BOTH http and ws: this branch
+	## also fires for an incompatible godot-ai server that commonly holds both
+	## ports, so suggesting only http would leave the new server unable to
+	## bind ws.
+	var http_port := McpClientConfigurator.http_port()
+	var free_http := McpClientConfigurator.suggest_free_port(http_port + 1)
+	var free_ws := McpClientConfigurator.suggest_free_port(McpClientConfigurator.ws_port() + 1)
+	var body := McpDockScript._crash_body_for_state(
+		McpServerState.INCOMPATIBLE,
+		{"message": "Port %d is occupied by another process." % http_port},
+	)
+	assert_contains(body, "%d (HTTP)" % free_http,
+		"foreign-occupant body must name a concrete free HTTP port")
+	assert_contains(body, "%d (WS)" % free_ws,
+		"foreign-occupant body must name a concrete free WS port")
+	assert_contains(body, "godot_ai/http_port",
+		"foreign-occupant body must point at the HTTP Editor Setting to change")
+	assert_contains(body, "godot_ai/ws_port",
+		"foreign-occupant body must point at the WS Editor Setting too")
+
+
+func test_recoverable_incompatible_body_keeps_restart_copy() -> void:
+	## A recoverable (older godot-ai) occupant must NOT be told to flee to a
+	## free port — reclaiming the port via Restart Server is the better path,
+	## so the free-port hint stays out of that branch.
+	var body := McpDockScript._crash_body_for_state(
+		McpServerState.INCOMPATIBLE,
+		{"can_recover_incompatible": true, "expected_version": "2.8.0"},
+	)
+	assert_contains(body, "Restart Server", "recoverable body must keep the restart guidance")
+	assert_false(body.contains("is free"), "recoverable body must not push a free-port switch")
+
+
+func test_foreign_incompatible_shows_docs_link_button() -> void:
+	## The "How to change the port" docs link carries the per-client
+	## reconfigure steps that don't fit inline. It belongs only to the
+	## genuinely-foreign case (no recovery proof).
+	_dock._build_ui()
+	_dock._update_crash_panel({
+		"state": McpServerState.INCOMPATIBLE,
+		"message": "Port 8000 is occupied by another process.",
+	})
+	assert_true(_dock._crash_docs_btn.visible,
+		"foreign-occupant case must surface the reconfigure docs link")
+
+
+func test_port_conflict_docs_url_is_pinned_to_installed_version() -> void:
+	## The docs button must open the guide as it shipped, not tip-of-main —
+	## so the URL is pinned to the release tag (`v<version>`) matching the
+	## installed plugin version. Guards against a regression back to a bare
+	## blob/main link that drifts away from older builds' UI.
+	var url := McpDockScript._port_conflict_docs_url()
+	var version := McpClientConfigurator.get_plugin_version()
+	assert_contains(url, "/blob/v%s/" % version,
+		"docs URL must pin to the installed plugin version's release tag")
+	assert_contains(url, McpDockScript.PORT_CONFLICT_DOCS_PATH,
+		"docs URL must point at the port-conflict guide")
+	assert_false(url.contains("/blob/main/"),
+		"docs URL must not hard-link to tip-of-main")
+
+
+func test_recoverable_incompatible_hides_docs_link_button() -> void:
+	## A recoverable godot-ai occupant gets Restart Server, not the
+	## change-the-port docs link.
+	_dock._build_ui()
+	_dock._update_crash_panel({
+		"state": McpServerState.INCOMPATIBLE,
+		"can_recover_incompatible": true,
+		"message": "Port 8000 is occupied by godot-ai server v1.2.10",
+	})
+	assert_false(_dock._crash_docs_btn.visible,
+		"recoverable case keeps Restart Server, not the docs link")
+
+
 # --- Signal-emit contracts on the audit-v2 #360 extracted subpanels ---
 # These pin the new panel boundary: panels emit; dock owns side effects.
 
