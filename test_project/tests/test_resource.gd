@@ -308,8 +308,12 @@ func test_create_resource_unknown_property_in_properties_dict() -> void:
 	assert_has_key(result.error.data, "valid_properties")
 	var valid: Array = result.error.data.valid_properties
 	assert_contains(valid, "size", "BoxMesh's real 'size' property should appear in valid_properties")
-	# The error message should also point at resource_get_info for full discovery.
-	assert_contains(result.error.message, "resource_get_info")
+	# The error message must point at a LITERALLY-CALLABLE discovery verb: the MCP
+	# manage tool takes only op/params/session_id, so per-op args nest in params=.
+	# A flat type= kwarg is non-callable (-> MISSING_REQUIRED_PARAM).
+	assert_contains(result.error.message, "resource_manage(op=\"get_info\", params={\"type\":")
+	assert_false(result.error.message.contains("get_info\", type="),
+		"hint must not use the non-callable flat type= kwarg")
 	_remove_node(mi)
 
 
@@ -404,6 +408,124 @@ func test_get_resource_info_includes_hint_string() -> void:
 			break
 	assert_false(shading_mode.is_empty(), "shading_mode property should be present")
 	assert_contains(shading_mode.hint_string, "Unshaded")
+
+
+# ----- get_resource_info for project class_name Resources -----
+
+func test_get_resource_info_custom_class_name_lists_script_and_inherited_props() -> void:
+	# Consistency: resource_create can make custom class_name Resources, so
+	# get_info must answer for them too — surfacing both the script's exported
+	# properties and the inherited native (Resource) properties.
+	var result := _handler.get_resource_info({"type": "MyTestResource"})
+	assert_has_key(result, "data")
+	assert_eq(result.data.type, "MyTestResource")
+	assert_eq(result.data.parent_class, "Resource", "native base resolved via get_instance_base_type")
+	assert_true(result.data.can_instantiate, "@tool custom Resource is instantiable")
+	var prop_names: Array = []
+	for p in result.data.properties:
+		prop_names.append(p.name)
+	assert_contains(prop_names, "label", "script export 'label' must be listed")
+	assert_contains(prop_names, "sub", "script export 'sub' must be listed")
+	assert_contains(prop_names, "resource_name", "inherited Resource property must be listed")
+
+
+func test_get_resource_info_custom_class_is_side_effect_free() -> void:
+	# A read-only introspection tool must NOT run _init(): resolve metadata from
+	# the script + its native base, never scr.new().
+	MyTestResource.init_count = 0
+	var result := _handler.get_resource_info({"type": "MyTestResource"})
+	assert_has_key(result, "data")
+	assert_eq(MyTestResource.init_count, 0, "get_info must not construct the resource")
+
+
+func test_get_resource_info_custom_class_non_resource_is_wrong_type() -> void:
+	# A class_name whose native base is not a Resource (here @tool extends Node)
+	# must be rejected as WRONG_TYPE — and, like the create path, without
+	# constructing it (no orphan).
+	McpToolNodeFixture.init_count = 0
+	var result := _handler.get_resource_info({"type": "McpToolNodeFixture"})
+	assert_is_error(result, ErrorCodes.WRONG_TYPE)
+	assert_contains(result.error.message, "not a Resource type",
+		"custom get_info Node-base rejection must name the type mismatch, not just the code")
+	assert_eq(McpToolNodeFixture.init_count, 0,
+		"non-Resource class must be rejected before construction")
+
+
+func test_property_error_on_custom_resource_points_at_working_get_info() -> void:
+	# Closes the loop: a bad property on a custom Resource must name the script
+	# class (not the native base) and point at the real MCP discovery verb, which
+	# now answers for custom class_name Resources.
+	var res := MyTestResource.new()
+	var err: Variant = ResourceHandler._apply_resource_properties(res, {"no_such_prop": 1})
+	assert_true(err is Dictionary, "expected an error dict; got: %s" % str(err))
+	if err is Dictionary:
+		assert_contains(err.error.message, "MyTestResource",
+			"hint should name the script class, not the native base 'Resource'")
+		assert_contains(err.error.message, "resource_manage(op=\"get_info\", params={\"type\": \"MyTestResource\"})",
+			"hint must be a literally-callable resource_manage(op, params={...}) form")
+
+
+func test_get_resource_info_custom_props_have_uniform_default_key() -> void:
+	# F3: every property entry (native inherited AND script export) must carry a
+	# "default" key, so a consumer using prop["default"] (learned from a native
+	# type) doesn't KeyError on the script-defined exports. Script exports carry
+	# an explicit null — the resource is never constructed to read a real default.
+	var result := _handler.get_resource_info({"type": "MyTestResource"})
+	assert_has_key(result, "data")
+	for p in result.data.properties:
+		assert_has_key(p, "default", "property '%s' must carry a default key" % str(p.get("name", "?")))
+	for p in result.data.properties:
+		if p.name == "label":
+			assert_eq(p.default, null, "script export default is null (resource is never constructed)")
+
+
+func test_get_resource_info_non_tool_custom_class_not_mislabeled_abstract() -> void:
+	# F4: a non-@tool concrete custom Resource is NOT abstract — it just isn't
+	# instantiable in the editor. is_abstract must reflect real abstractness
+	# (scr.is_abstract()), not editor-instantiability.
+	var nontool := load("res://tests/mcp_non_tool_resource_fixture.gd") as Script
+	assert_false(nontool.can_instantiate(),
+		"fixture precondition: non-@tool script is non-instantiable in editor context")
+	var result := _handler.get_resource_info({"type": "McpNonToolResource"})
+	assert_has_key(result, "data")
+	assert_false(result.data.is_abstract,
+		"a concrete non-@tool Resource must not be reported abstract")
+	assert_false(result.data.can_instantiate,
+		"editor-instantiability is reported separately and is false here")
+
+
+func test_get_resource_info_custom_class_reports_immediate_script_parent() -> void:
+	# F5: parent_class must be the immediate SCRIPT parent for a multi-level custom
+	# hierarchy (McpDerivedResource -> MyTestResource -> Resource), not the
+	# collapsed native base. Inherited script exports must still surface.
+	var result := _handler.get_resource_info({"type": "McpDerivedResource"})
+	assert_has_key(result, "data")
+	assert_eq(result.data.parent_class, "MyTestResource",
+		"immediate script parent, not the native base")
+	var names: Array = []
+	for p in result.data.properties:
+		names.append(p.name)
+	assert_contains(names, "extra", "own script export must be listed")
+	assert_contains(names, "label", "inherited script export (from MyTestResource) must be listed")
+
+
+func test_script_base_type_or_error_reports_compile_failure_not_wrong_type() -> void:
+	# F2: a registered class_name whose script fails to compile resolves to an
+	# EMPTY base type; report a compile/load failure (INTERNAL_ERROR), not a
+	# misleading WRONG_TYPE "(extends )". An empty GDScript reproduces the empty
+	# base type (is Script, base == "") WITHOUT pushing a parse error that the
+	# harness would flag as a test abort — and avoids a committed broken fixture
+	# that would trip the parse gate.
+	var empty := GDScript.new()
+	# Dynamic dispatch on the loaded script (a Variant) — the typed const can't
+	# call() directly, and this keeps the not-yet-existing helper from
+	# static-parse-erroring the suite in the RED state.
+	var rh: Variant = load("res://addons/godot_ai/handlers/resource_handler.gd")
+	var result: Variant = rh.call("_script_base_type_or_error", empty, "McpEmptyProbe", "res://empty_probe.gd")
+	assert_is_error(result, ErrorCodes.INTERNAL_ERROR)
+	if result is Dictionary:
+		assert_contains(result.error.message, "compile",
+			"empty base type must be reported as a compile/parse failure")
 
 
 func test_create_resource_saves_to_disk() -> void:
@@ -552,3 +674,128 @@ func test_create_resource_nested_class_dict_invalid_class() -> void:
 	})
 	assert_is_error(result)
 	_remove_node(tr)
+
+
+# ----- custom class_name Resource instantiation -----
+
+func test_instantiate_resource_builtin_still_works() -> void:
+	# Regression: engine built-ins must still resolve via ClassDB.
+	assert_true(ResourceHandler._instantiate_resource("BoxMesh") is BoxMesh)
+
+
+func test_instantiate_resource_custom_class_name() -> void:
+	var made: Variant = ResourceHandler._instantiate_resource("MyTestResource")
+	assert_true(made is MyTestResource, "should instantiate a project class_name Resource")
+
+
+func test_instantiate_resource_unknown_type_errors() -> void:
+	assert_is_error(ResourceHandler._instantiate_resource("NotARealType_xyz"),
+		ErrorCodes.VALUE_OUT_OF_RANGE)
+
+
+func test_create_resource_custom_class_to_file() -> void:
+	var out_path := "res://tests/_mcp_test_custom_resource.tres"
+	if FileAccess.file_exists(out_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(out_path))
+	var result := _handler.create_resource({
+		"type": "MyTestResource",
+		"resource_path": out_path,
+		"properties": {"label": "hi"},
+	})
+	assert_has_key(result, "data")
+	var loaded := load(out_path)
+	assert_true(loaded is MyTestResource, "saved resource should load as MyTestResource")
+	assert_eq(loaded.label, "hi")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(out_path))
+
+
+# ----- regression: nested __class__ shortcut must resolve project class_name -----
+
+func test_apply_properties_nested_custom_class_name_instantiates_sub_resource() -> void:
+	# The nested {"__class__": ...} shortcut must resolve project class_name
+	# Resources (not just engine built-ins), mirroring the top-level
+	# _instantiate_resource path. A custom MyTestResource nested in a sub-resource
+	# slot must instantiate rather than failing "Unknown resource type".
+	var host := MyTestResource.new()
+	var err: Variant = ResourceHandler._apply_resource_properties(host, {
+		"sub": {"__class__": "MyTestResource", "label": "child"},
+	})
+	assert_true(err == null, "nested custom class_name should apply cleanly; got: %s" % str(err))
+	assert_true(host.sub is MyTestResource, "nested __class__ must instantiate the custom Resource; got: %s" % str(host.sub))
+	if host.sub is MyTestResource:
+		assert_eq((host.sub as MyTestResource).label, "child")
+
+
+func test_instantiate_resource_non_instantiable_project_class_is_wrong_type() -> void:
+	# A project class_name whose can_instantiate() is false (here a non-@tool
+	# script, non-instantiable in the editor) must return WRONG_TYPE — mirroring
+	# the built-in abstract path — not INTERNAL_ERROR.
+	# Precondition: pin the load-bearing assumption that the non-@tool fixture is
+	# non-instantiable in this (editor) context — so a future scripting-enabled
+	# runner surfaces a clear precondition failure rather than a confusing
+	# "expected error, got success" on the assertion below.
+	var nontool := load("res://tests/mcp_non_tool_resource_fixture.gd") as Script
+	assert_false(nontool.can_instantiate(),
+		"fixture precondition: non-@tool script must be non-instantiable in editor context")
+	var result: Variant = ResourceHandler._instantiate_resource("McpNonToolResource")
+	assert_is_error(result, ErrorCodes.WRONG_TYPE)
+	assert_contains(result["error"]["message"], "@tool",
+		"non-@tool rejection must point at the actionable @tool remediation")
+
+
+func test_instantiate_resource_tool_node_class_rejected_before_construction() -> void:
+	# Regression for the orphan-Node leak: a project class_name whose native base
+	# is NOT a Resource (here @tool extends Node) must be rejected BEFORE
+	# scr.new(). Because it is @tool, can_instantiate() is true, so the old
+	# construct-then-reject path ran _init() and leaked the orphan Node it never
+	# frees (Node is not ref-counted). The base-type gate
+	# (get_instance_base_type + is_parent_class) must reject it pre-construction.
+	# Precondition: the fixture IS instantiable here, so a WRONG_TYPE can only
+	# come from the pre-construction base-type gate, not from can_instantiate().
+	var tool_node := load("res://tests/mcp_tool_node_fixture.gd") as Script
+	assert_true(tool_node.can_instantiate(),
+		"fixture precondition: @tool script must be instantiable, so rejection must be pre-construction")
+	McpToolNodeFixture.init_count = 0
+	var result: Variant = ResourceHandler._instantiate_resource("McpToolNodeFixture")
+	assert_is_error(result, ErrorCodes.WRONG_TYPE)
+	assert_contains(result["error"]["message"], "not a Resource type",
+		"Node-base rejection must name the type mismatch, not just the code")
+	assert_eq(McpToolNodeFixture.init_count, 0,
+		"_init must NOT run: the script must be rejected before scr.new()")
+
+
+func test_instantiate_resource_custom_class_with_required_init_arg_rejected() -> void:
+	# A concrete @tool custom Resource whose _init() REQUIRES an argument:
+	# can_instantiate() is true, so without a pre-construction guard scr.new()
+	# (called with no args) raises mid-handler and aborts — the call null-cascades
+	# into a generic "malformed result" error instead of a clean rejection.
+	# _instantiate_resource must reject it as WRONG_TYPE BEFORE scr.new(), and
+	# without running _init (no side-effect), mirroring the abstract / non-Resource
+	# guards. Covers only the statically-detectable required-arg case; a _init that
+	# runs but throws still falls through to the dispatcher's generic catch.
+	# Precondition: the fixture IS instantiable, so the WRONG_TYPE can only come
+	# from the arg-count guard, not from can_instantiate().
+	var scr := load("res://tests/mcp_init_arg_fixture.gd") as Script
+	assert_true(scr.can_instantiate(),
+		"fixture precondition: @tool script is instantiable, so rejection must be the arg-count guard")
+	McpInitArgResource.init_count = 0
+	var result: Variant = ResourceHandler._instantiate_resource("McpInitArgResource")
+	assert_is_error(result, ErrorCodes.WRONG_TYPE)
+	assert_eq(McpInitArgResource.init_count, 0,
+		"_init must NOT run: the script must be rejected before scr.new()")
+	if result is Dictionary:
+		assert_contains(result.error.message, "_init",
+			"message should name the _init-requires-arguments cause")
+
+
+func test_apply_properties_nested_failure_names_the_property() -> void:
+	# Routing the nested __class__ shortcut through _instantiate_resource must
+	# still name the offending property slot in the error, preserving the
+	# diagnostic context the inline path used to provide.
+	var host := MyTestResource.new()
+	var err: Variant = ResourceHandler._apply_resource_properties(host, {
+		"sub": {"__class__": "NotARealType_xyz"},
+	})
+	assert_true(err is Dictionary, "expected an error dict; got: %s" % str(err))
+	if err is Dictionary:
+		assert_contains(err["error"]["message"], "for property 'sub'")
