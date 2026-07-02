@@ -146,7 +146,7 @@ func get_atlas_tiles(params: Dictionary) -> Dictionary:
 	var source_id: int = ts.get_source_id(source_index)
 	var src = ts.get_source(source_id)
 	if not src is TileSetAtlasSource:
-		var source_type := "null" if src == null else src.get_class()
+		var source_type: String = "null" if src == null else src.get_class()
 		return ErrorCodes.make(
 			ErrorCodes.WRONG_TYPE,
 			"Source %d is not a TileSetAtlasSource (got %s)" % [source_id, source_type]
@@ -220,7 +220,7 @@ func get_atlas_image(params: Dictionary) -> Dictionary:
 	var source_id: int = ts.get_source_id(source_index)
 	var src = ts.get_source(source_id)
 	if not src is TileSetAtlasSource:
-		var source_type := "null" if src == null else src.get_class()
+		var source_type: String = "null" if src == null else src.get_class()
 		return ErrorCodes.make(
 			ErrorCodes.WRONG_TYPE,
 			"Source %d is not a TileSetAtlasSource (got %s)" % [source_id, source_type]
