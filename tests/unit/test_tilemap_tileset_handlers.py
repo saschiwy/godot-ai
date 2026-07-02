@@ -1,0 +1,142 @@
+from __future__ import annotations
+
+from godot_ai.handlers import editor as editor_handlers
+from godot_ai.handlers import tilemap as tilemap_handlers
+from godot_ai.handlers import tileset as tileset_handlers
+from godot_ai.runtime.direct import DirectRuntime
+from godot_ai.sessions.registry import SessionRegistry
+
+
+class StubClient:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    async def send(self, command, params=None, session_id=None, timeout=5.0):
+        self.calls.append(
+            {
+                "command": command,
+                "params": params or {},
+                "session_id": session_id,
+                "timeout": timeout,
+            }
+        )
+        if command == "take_screenshot":
+            source = (params or {}).get("source", "viewport")
+            return {
+                "source": source,
+                "width": 1,
+                "height": 1,
+                "original_width": 100,
+                "original_height": 100,
+                "format": "png",
+                "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=",
+            }
+        return {"ok": True}
+
+
+async def test_editor_screenshot_handler_passes_viewport_2d_source():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    result = await editor_handlers.editor_screenshot(
+        runtime,
+        source="viewport_2d",
+        include_image=False,
+    )
+
+    assert client.calls[-1]["command"] == "take_screenshot"
+    assert client.calls[-1]["params"]["source"] == "viewport_2d"
+    assert result["source"] == "viewport_2d"
+
+
+async def test_tilemap_set_cell_handler_forwards_command_and_params():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    await tilemap_handlers.tilemap_set_cell(
+        runtime,
+        path="/Main/Ground",
+        source_id=2,
+        atlas_col=1,
+        atlas_row=3,
+        map_x=8,
+        map_y=9,
+    )
+
+    assert client.calls[-1]["command"] == "tilemap_set_cell"
+    assert client.calls[-1]["params"] == {
+        "path": "/Main/Ground",
+        "source_id": 2,
+        "atlas_col": 1,
+        "atlas_row": 3,
+        "map_x": 8,
+        "map_y": 9,
+    }
+
+
+async def test_tilemap_set_cells_rect_handler_forwards_command_and_params():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    await tilemap_handlers.tilemap_set_cells_rect(
+        runtime,
+        path="/Main/Ground",
+        source_id=5,
+        atlas_col=0,
+        atlas_row=0,
+        rect_x=1,
+        rect_y=2,
+        rect_w=3,
+        rect_h=4,
+    )
+
+    assert client.calls[-1]["command"] == "tilemap_set_cells_rect"
+    assert client.calls[-1]["params"] == {
+        "path": "/Main/Ground",
+        "source_id": 5,
+        "atlas_col": 0,
+        "atlas_row": 0,
+        "rect_x": 1,
+        "rect_y": 2,
+        "rect_w": 3,
+        "rect_h": 4,
+    }
+
+
+async def test_tilemap_clear_handler_forwards_command_and_params():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    await tilemap_handlers.tilemap_clear(runtime, path="/Main/Ground")
+
+    assert client.calls[-1]["command"] == "tilemap_clear"
+    assert client.calls[-1]["params"] == {"path": "/Main/Ground"}
+
+
+async def test_tilemap_get_cells_handler_forwards_command_and_params():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    await tilemap_handlers.tilemap_get_cells(runtime, path="/Main/Ground")
+
+    assert client.calls[-1]["command"] == "tilemap_get_cells"
+    assert client.calls[-1]["params"] == {"path": "/Main/Ground"}
+
+
+async def test_tileset_generate_specialized_forwards_root_dir():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    await tileset_handlers.tileset_generate_specialized(
+        runtime,
+        biom="volcano",
+        layer_sources={"floor": [0, 5]},
+        root_dir="res://biomes",
+    )
+
+    assert client.calls[-1]["command"] == "tileset_generate_specialized"
+    assert client.calls[-1]["params"] == {
+        "biom": "volcano",
+        "layer_sources": {"floor": [0, 5]},
+        "root_dir": "res://biomes",
+    }
