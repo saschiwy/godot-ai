@@ -44,3 +44,31 @@ async def tileset_generate_specialized(
             "root_dir": root_dir,
         },
     )
+
+
+async def tileset_get_atlas_tiles(
+    runtime: DirectRuntime,
+    tileset_path: str,
+    source_id: int,
+) -> dict:
+    """Return all occupied atlas positions for one source in a TileSet.
+
+    Calls the GDScript ``get_atlas_tiles`` handler (read-only) and returns
+    its result unchanged.
+
+    Args:
+        runtime:       In-process runtime adapter.
+        tileset_path:  ``res://`` path to the ``.tres`` TileSet resource.
+        source_id:     Integer index of the ``TileSetAtlasSource`` to query.
+
+    Returns:
+        ``{"tiles": [{"col": int, "row": int}, ...], "count": int}`` on
+        success, or an error dict from the GDScript handler.
+    """
+    return await runtime.send_command(
+        "tileset_get_atlas_tiles",
+        {
+            "tileset_path": tileset_path,
+            "source_id": source_id,
+        },
+    )

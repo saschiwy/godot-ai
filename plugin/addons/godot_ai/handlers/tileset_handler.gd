@@ -87,3 +87,74 @@ func generate_specialized_tilesets(params: Dictionary) -> Dictionary:
 		created.append(output_path)
 
 	return {"data": {"created": created, "skipped": skipped}}
+
+
+## Query all occupied atlas tile positions for a single source.
+##
+## params:
+##   tileset_path  — res:// path to the TileSet resource (required, non-empty)
+##   source_id     — integer index of the source within the TileSet (required)
+##
+## Returns:
+##   {"data": {"tiles": [{"col": int, "row": int}, ...], "count": int}}
+##     on success (including empty sources, where tiles=[] and count=0)
+##   ErrorCodes.make(code, message)  on any validation or load failure
+##
+## Error codes:
+##   MISSING_REQUIRED_PARAM  — tileset_path absent/empty, or source_id absent
+##   RESOURCE_NOT_FOUND      — ResourceLoader.exists(tileset_path) is false
+##   WRONG_TYPE              — loaded resource is not a TileSet, or source is
+##                             not a TileSetAtlasSource
+##   VALUE_OUT_OF_RANGE      — source_id < 0 or >= TileSet.get_source_count()
+##
+## This method is read-only: it never calls ResourceSaver or modifies any resource.
+func get_atlas_tiles(params: Dictionary) -> Dictionary:
+	var tileset_path: String = params.get("tileset_path", "")
+	if tileset_path.is_empty():
+		return ErrorCodes.make(
+			ErrorCodes.MISSING_REQUIRED_PARAM,
+			"'tileset_path' parameter is required and must not be empty"
+		)
+
+	if not params.has("source_id"):
+		return ErrorCodes.make(
+			ErrorCodes.MISSING_REQUIRED_PARAM,
+			"'source_id' parameter is required"
+		)
+
+	if not ResourceLoader.exists(tileset_path):
+		return ErrorCodes.make(
+			ErrorCodes.RESOURCE_NOT_FOUND,
+			"TileSet resource not found: %s" % tileset_path
+		)
+
+	var ts = load(tileset_path)
+	if not ts is TileSet:
+		var loaded_type := "null" if ts == null else ts.get_class()
+		return ErrorCodes.make(
+			ErrorCodes.WRONG_TYPE,
+			"Resource at '%s' is not a TileSet (got %s)" % [tileset_path, loaded_type]
+		)
+
+	var source_index: int = params.get("source_id", -999)
+	if source_index < 0 or source_index >= ts.get_source_count():
+		return ErrorCodes.make(
+			ErrorCodes.VALUE_OUT_OF_RANGE,
+			"source_id %d is out of range (TileSet has %d sources)" % [source_index, ts.get_source_count()]
+		)
+
+	var source_id: int = ts.get_source_id(source_index)
+	var src = ts.get_source(source_id)
+	if not src is TileSetAtlasSource:
+		var source_type := "null" if src == null else src.get_class()
+		return ErrorCodes.make(
+			ErrorCodes.WRONG_TYPE,
+			"Source %d is not a TileSetAtlasSource (got %s)" % [source_id, source_type]
+		)
+
+	var tiles: Array = []
+	for i in range(src.get_tiles_count()):
+		var v: Vector2i = src.get_tile_id(i)
+		tiles.append({"col": v.x, "row": v.y})
+
+	return {"data": {"tiles": tiles, "count": tiles.size()}}

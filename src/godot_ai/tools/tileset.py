@@ -44,6 +44,32 @@ Ops:
 
         Hard stop: if the main {biom}.tres does not exist, the command
         returns NODE_NOT_FOUND with a hint to run setup_{biom}.gd first.
+
+  • tileset_get_atlas_tiles(tileset_path, source_id)
+        Return all occupied atlas tile positions for one source in a TileSet.
+        Read-only — does not modify any resource or project file.
+
+        tileset_path: res:// path to the .tres TileSet resource (required)
+        source_id:    integer index of the TileSetAtlasSource to query (required, ≥ 0)
+
+        Returns:
+          {"tiles": [{"col": int, "row": int}, ...], "count": int}
+
+        Error codes (passed through from GDScript handler):
+          MISSING_REQUIRED_PARAM  — tileset_path empty or source_id absent
+          RESOURCE_NOT_FOUND      — tileset_path does not exist on disk
+          WRONG_TYPE              — not a TileSet, or source is not a TileSetAtlasSource
+          VALUE_OUT_OF_RANGE      — source_id out of bounds for this TileSet
+
+  • Atlas screenshot workflow (two-step, uses existing tools — no new op):
+        To visually inspect what tiles look like on a source atlas:
+        Step 1: resource_manage(op="load", path=<tileset_path>)
+                Opens the TileSet in the Godot editor TileSet panel.
+        Step 2: editor_screenshot(source="viewport_2d")
+                Captures the TileSet panel as a PNG ImageContent block.
+        Abort if Step 1 returns an error. Do NOT call Step 2 if Step 1 failed.
+        This workflow requires the editor to be idle (not in play mode);
+        if the editor is playing, EDITOR_NOT_READY is returned.
 """
 
 
@@ -54,5 +80,10 @@ def register_tileset_tools(mcp: FastMCP) -> None:
         description=_DESCRIPTION,
         ops={
             "tileset_generate_specialized": tileset_handlers.tileset_generate_specialized,
+            "tileset_get_atlas_tiles": tileset_handlers.tileset_get_atlas_tiles,
+        },
+        read_resource_forms={
+            # tileset_get_atlas_tiles is a read op with no godot:// resource counterpart
+            "tileset_get_atlas_tiles": None,
         },
     )

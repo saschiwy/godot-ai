@@ -29,7 +29,10 @@ class StubClient:
                 "original_width": 100,
                 "original_height": 100,
                 "format": "png",
-                "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=",
+                "image_base64": (
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAA"
+                    "AAAMAASsJTYQAAAAASUVORK5CYII="
+                ),
             }
         return {"ok": True}
 
@@ -140,3 +143,59 @@ async def test_tileset_generate_specialized_forwards_root_dir():
         "layer_sources": {"floor": [0, 5]},
         "root_dir": "res://biomes",
     }
+
+
+async def test_tileset_get_atlas_tiles_calls_send_command():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    await tileset_handlers.tileset_get_atlas_tiles(
+        runtime,
+        tileset_path="res://tilesets/my_biome/my_biome.tres",
+        source_id=8,
+    )
+
+    assert client.calls[-1]["command"] == "tileset_get_atlas_tiles"
+    assert client.calls[-1]["params"] == {
+        "tileset_path": "res://tilesets/my_biome/my_biome.tres",
+        "source_id": 8,
+    }
+
+
+async def test_tileset_get_atlas_tiles_returns_result_unchanged():
+    expected = {"data": {"tiles": [{"col": 0, "row": 0}], "count": 1}}
+
+    class FixedClient(StubClient):
+        async def send(self, command, params=None, session_id=None, timeout=5.0):
+            await super().send(command, params, session_id, timeout)
+            return expected
+
+    client = FixedClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    result = await tileset_handlers.tileset_get_atlas_tiles(
+        runtime,
+        tileset_path="res://some.tres",
+        source_id=0,
+    )
+
+    assert result is expected
+
+
+async def test_tileset_get_atlas_tiles_does_not_call_require_writable():
+    from unittest.mock import AsyncMock, patch
+
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    with patch(
+        "godot_ai.handlers.tileset.require_writable_async",
+        new_callable=AsyncMock,
+    ) as mock_require_writable:
+        await tileset_handlers.tileset_get_atlas_tiles(
+            runtime,
+            tileset_path="res://some.tres",
+            source_id=0,
+        )
+
+    mock_require_writable.assert_not_called()

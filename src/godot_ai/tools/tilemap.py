@@ -57,4 +57,8 @@ def register_tilemap_tools(mcp: FastMCP) -> None:
             "tilemap_clear":          tilemap_handlers.tilemap_clear,
             "tilemap_get_cells":      tilemap_handlers.tilemap_get_cells,
         },
+        read_resource_forms={
+            # tilemap_get_cells is a read op with no godot:// resource counterpart
+            "tilemap_get_cells": None,
+        },
     )
