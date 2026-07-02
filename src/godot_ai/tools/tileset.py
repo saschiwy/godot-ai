@@ -61,15 +61,31 @@ Ops:
           WRONG_TYPE              — not a TileSet, or source is not a TileSetAtlasSource
           VALUE_OUT_OF_RANGE      — source_id out of bounds for this TileSet
 
-  • Atlas screenshot workflow (two-step, uses existing tools — no new op):
-        To visually inspect what tiles look like on a source atlas:
-        Step 1: resource_manage(op="load", path=<tileset_path>)
-                Opens the TileSet in the Godot editor TileSet panel.
-        Step 2: editor_screenshot(source="viewport_2d")
-                Captures the TileSet panel as a PNG ImageContent block.
-        Abort if Step 1 returns an error. Do NOT call Step 2 if Step 1 failed.
-        This workflow requires the editor to be idle (not in play mode);
-        if the editor is playing, EDITOR_NOT_READY is returned.
+  • tileset_get_atlas_image(tileset_path, source_id, max_size=0)
+        Return the atlas sprite-sheet texture of a TileSetAtlasSource as a
+        Base64-encoded PNG image.  Read-only — reads the texture directly
+        from the resource without any UI interaction.
+
+        tileset_path: res:// path to the .tres TileSet resource (required)
+        source_id:    integer index of the TileSetAtlasSource to query (required, ≥ 0)
+        max_size:     optional int; if > 0, scale the image so its longest
+                      edge is at most max_size pixels (default 0 = full res)
+
+        Returns:
+          {"image_base64": str, "width": int, "height": int,
+           "original_width": int, "original_height": int, "format": "png"}
+
+        Error codes (passed through from GDScript handler):
+          MISSING_REQUIRED_PARAM  — tileset_path empty or source_id absent
+          RESOURCE_NOT_FOUND      — tileset_path does not exist on disk
+          WRONG_TYPE              — not a TileSet, source not a TileSetAtlasSource,
+                                    or source has no texture assigned
+          VALUE_OUT_OF_RANGE      — source_id out of bounds for this TileSet
+
+  • Atlas image workflow:
+        To visually inspect what tiles look like, use tileset_get_atlas_image
+        instead of editor screenshots. It reads the texture directly from the
+        resource — no UI interaction or editor state required.
 """
 
 
@@ -81,9 +97,10 @@ def register_tileset_tools(mcp: FastMCP) -> None:
         ops={
             "tileset_generate_specialized": tileset_handlers.tileset_generate_specialized,
             "tileset_get_atlas_tiles": tileset_handlers.tileset_get_atlas_tiles,
+            "tileset_get_atlas_image": tileset_handlers.tileset_get_atlas_image,
         },
         read_resource_forms={
-            # tileset_get_atlas_tiles is a read op with no godot:// resource counterpart
             "tileset_get_atlas_tiles": None,
+            "tileset_get_atlas_image": None,
         },
     )
