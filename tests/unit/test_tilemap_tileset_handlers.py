@@ -11,7 +11,14 @@ class StubClient:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    async def send(self, command, params=None, session_id=None, timeout=5.0, surface_error_hints=True):
+    async def send(
+        self,
+        command,
+        params=None,
+        session_id=None,
+        timeout=5.0,
+        surface_error_hints=True,
+    ):
         self.calls.append(
             {
                 "command": command,
@@ -211,7 +218,14 @@ async def test_tileset_get_atlas_tiles_returns_result_unchanged():
     expected = {"data": {"tiles": [{"col": 0, "row": 0}], "count": 1}}
 
     class FixedClient(StubClient):
-        async def send(self, command, params=None, session_id=None, timeout=5.0, surface_error_hints=True):
+        async def send(
+            self,
+            command,
+            params=None,
+            session_id=None,
+            timeout=5.0,
+            surface_error_hints=True,
+        ):
             await super().send(command, params, session_id, timeout, surface_error_hints)
             return expected
 
@@ -268,7 +282,10 @@ async def test_tileset_get_atlas_image_calls_send_command_with_default_max_size(
 async def test_tileset_get_atlas_image_returns_result_unchanged():
     expected = {
         "data": {
-            "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=",
+            "image_base64": (
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAA"
+                "AAMAASsJTYQAAAAASUVORK5CYII="
+            ),
             "width": 1,
             "height": 1,
             "original_width": 1,
@@ -278,7 +295,14 @@ async def test_tileset_get_atlas_image_returns_result_unchanged():
     }
 
     class FixedClient(StubClient):
-        async def send(self, command, params=None, session_id=None, timeout=5.0, surface_error_hints=True):
+        async def send(
+            self,
+            command,
+            params=None,
+            session_id=None,
+            timeout=5.0,
+            surface_error_hints=True,
+        ):
             await super().send(command, params, session_id, timeout, surface_error_hints)
             return expected
 
