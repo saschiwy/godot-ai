@@ -200,3 +200,20 @@ func test_tilemap_rect_fill_undo_preserves_outside_tiles() -> void:
 	assert_true(seen.has("10,10"))
 
 
+func test_tilemap_scene_file_mismatch_returns_error() -> void:
+	var scene_root := EditorInterface.get_edited_scene_root()
+	if scene_root == null:
+		skip("No scene open")
+		return
+
+	var wrong_scene := "res://_mcp_non_active_scene_for_tilemap.tscn"
+	if scene_root.scene_file_path == wrong_scene:
+		wrong_scene = "res://main.tscn"
+
+	var result := _tilemap_handler.get_used_cells({
+		"path": "/%s" % scene_root.name,
+		"scene_file": wrong_scene,
+	})
+	assert_is_error(result, ErrorCodes.EDITED_SCENE_MISMATCH)
+
+

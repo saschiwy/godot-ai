@@ -106,15 +106,12 @@ func get_used_cells(params: Dictionary) -> Dictionary:
 ## Resolve a TileMapLayer node from params["path"] in the currently edited
 ## scene. Returns {"node": TileMapLayer} on success, or an error dict.
 func _resolve_layer(params: Dictionary) -> Dictionary:
-	var scene_root: Node = EditorInterface.get_edited_scene_root()
-	if scene_root == null:
-		return ErrorCodes.make(ErrorCodes.EDITOR_NOT_READY, "No scene open")
 	var path: String = params.get("path", "")
-	if path.is_empty():
-		return ErrorCodes.make(ErrorCodes.MISSING_REQUIRED_PARAM, "Missing required param: path")
-	var node := McpScenePath.resolve(path, scene_root)
-	if node == null:
-		return ErrorCodes.make(ErrorCodes.NODE_NOT_FOUND, "Node not found: %s" % path)
+	var scene_file: String = params.get("scene_file", "")
+	var resolved := McpNodeValidator.resolve_or_error(path, "path", scene_file)
+	if resolved.has("error"):
+		return resolved
+	var node: Node = resolved.node
 	if not node is TileMapLayer:
 		return ErrorCodes.make(ErrorCodes.WRONG_TYPE,
 			"Node is not a TileMapLayer: %s" % path)
