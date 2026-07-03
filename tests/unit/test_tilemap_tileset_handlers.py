@@ -245,3 +245,71 @@ async def test_tileset_get_atlas_tiles_does_not_call_require_writable():
         )
 
     mock_require_writable.assert_not_called()
+
+
+async def test_tileset_get_atlas_image_calls_send_command_with_default_max_size():
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    await tileset_handlers.tileset_get_atlas_image(
+        runtime,
+        tileset_path="res://tilesets/atlas.tres",
+        source_id=3,
+    )
+
+    assert client.calls[-1]["command"] == "tileset_get_atlas_image"
+    assert client.calls[-1]["params"] == {
+        "tileset_path": "res://tilesets/atlas.tres",
+        "source_id": 3,
+        "max_size": 0,
+    }
+
+
+async def test_tileset_get_atlas_image_returns_result_unchanged():
+    expected = {
+        "data": {
+            "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=",
+            "width": 1,
+            "height": 1,
+            "original_width": 1,
+            "original_height": 1,
+            "format": "png",
+        }
+    }
+
+    class FixedClient(StubClient):
+        async def send(self, command, params=None, session_id=None, timeout=5.0, surface_error_hints=True):
+            await super().send(command, params, session_id, timeout, surface_error_hints)
+            return expected
+
+    client = FixedClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    result = await tileset_handlers.tileset_get_atlas_image(
+        runtime,
+        tileset_path="res://some.tres",
+        source_id=0,
+        max_size=64,
+    )
+
+    assert result is expected
+
+
+async def test_tileset_get_atlas_image_does_not_call_require_writable():
+    from unittest.mock import AsyncMock, patch
+
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    with patch(
+        "godot_ai.handlers.tileset.require_writable_async",
+        new_callable=AsyncMock,
+        create=True,
+    ) as mock_require_writable:
+        await tileset_handlers.tileset_get_atlas_image(
+            runtime,
+            tileset_path="res://some.tres",
+            source_id=0,
+        )
+
+    mock_require_writable.assert_not_called()

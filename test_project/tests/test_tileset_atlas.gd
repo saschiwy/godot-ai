@@ -429,3 +429,51 @@ func test_property_error_codes_multiple_invalid_source_ids_no_exception() -> voi
 		var result := _handler.get_atlas_tiles({"tileset_path": path, "source_id": sid})
 		assert_is_error(result, ErrorCodes.VALUE_OUT_OF_RANGE,
 			"source_id=%d must return VALUE_OUT_OF_RANGE" % sid)
+
+
+# ---------------------------------------------------------------------------
+# Atlas image tests
+# ---------------------------------------------------------------------------
+
+func test_get_atlas_image_returns_png_payload() -> void:
+	var ts := _make_tileset_with_source([Vector2i(0, 0)])
+	var path := _save_temp_resource(ts, "tileset_image_payload.tres")
+	if path.is_empty():
+		skip("Could not save temporary resource")
+		return
+
+	var result := _handler.get_atlas_image({"tileset_path": path, "source_id": 0})
+	assert_has_key(result, "data")
+	assert_has_key(result.data, "image_base64")
+	assert_has_key(result.data, "width")
+	assert_has_key(result.data, "height")
+	assert_has_key(result.data, "original_width")
+	assert_has_key(result.data, "original_height")
+	assert_has_key(result.data, "format")
+	assert_eq(result.data.width, 64)
+	assert_eq(result.data.height, 64)
+	assert_eq(result.data.original_width, 64)
+	assert_eq(result.data.original_height, 64)
+	assert_eq(result.data.format, "png")
+
+	var png_bytes := Marshalls.base64_to_raw(result.data.image_base64)
+	assert_true(not png_bytes.is_empty(), "image_base64 must decode to non-empty PNG bytes")
+
+
+func test_get_atlas_image_respects_max_size() -> void:
+	var ts := _make_tileset_with_source([Vector2i(0, 0)])
+	var path := _save_temp_resource(ts, "tileset_image_max_size.tres")
+	if path.is_empty():
+		skip("Could not save temporary resource")
+		return
+
+	var result := _handler.get_atlas_image({
+		"tileset_path": path,
+		"source_id": 0,
+		"max_size": 16,
+	})
+	assert_has_key(result, "data")
+	assert_eq(result.data.original_width, 64)
+	assert_eq(result.data.original_height, 64)
+	assert_true(result.data.width <= 16, "scaled width must be <= max_size")
+	assert_true(result.data.height <= 16, "scaled height must be <= max_size")
