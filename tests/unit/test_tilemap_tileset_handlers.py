@@ -11,13 +11,14 @@ class StubClient:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    async def send(self, command, params=None, session_id=None, timeout=5.0):
+    async def send(self, command, params=None, session_id=None, timeout=5.0, surface_error_hints=True):
         self.calls.append(
             {
                 "command": command,
                 "params": params or {},
                 "session_id": session_id,
                 "timeout": timeout,
+                "surface_error_hints": surface_error_hints,
             }
         )
         if command == "take_screenshot":
@@ -77,6 +78,29 @@ async def test_tilemap_set_cell_handler_forwards_command_and_params():
     }
 
 
+async def test_tilemap_set_cell_requires_writable_async():
+    from unittest.mock import AsyncMock, patch
+
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    with patch(
+        "godot_ai.handlers.tilemap.require_writable_async",
+        new_callable=AsyncMock,
+    ) as mock_require_writable:
+        await tilemap_handlers.tilemap_set_cell(
+            runtime,
+            path="/Main/Ground",
+            source_id=2,
+            atlas_col=1,
+            atlas_row=3,
+            map_x=8,
+            map_y=9,
+        )
+
+    mock_require_writable.assert_awaited_once_with(runtime)
+
+
 async def test_tilemap_set_cells_rect_handler_forwards_command_and_params():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
@@ -106,6 +130,31 @@ async def test_tilemap_set_cells_rect_handler_forwards_command_and_params():
     }
 
 
+async def test_tilemap_set_cells_rect_requires_writable_async():
+    from unittest.mock import AsyncMock, patch
+
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    with patch(
+        "godot_ai.handlers.tilemap.require_writable_async",
+        new_callable=AsyncMock,
+    ) as mock_require_writable:
+        await tilemap_handlers.tilemap_set_cells_rect(
+            runtime,
+            path="/Main/Ground",
+            source_id=5,
+            atlas_col=0,
+            atlas_row=0,
+            rect_x=1,
+            rect_y=2,
+            rect_w=3,
+            rect_h=4,
+        )
+
+    mock_require_writable.assert_awaited_once_with(runtime)
+
+
 async def test_tilemap_clear_handler_forwards_command_and_params():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
@@ -116,6 +165,21 @@ async def test_tilemap_clear_handler_forwards_command_and_params():
     assert client.calls[-1]["params"] == {"path": "/Main/Ground"}
 
 
+async def test_tilemap_clear_requires_writable_async():
+    from unittest.mock import AsyncMock, patch
+
+    client = StubClient()
+    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
+
+    with patch(
+        "godot_ai.handlers.tilemap.require_writable_async",
+        new_callable=AsyncMock,
+    ) as mock_require_writable:
+        await tilemap_handlers.tilemap_clear(runtime, path="/Main/Ground")
+
+    mock_require_writable.assert_awaited_once_with(runtime)
+
+
 async def test_tilemap_get_cells_handler_forwards_command_and_params():
     client = StubClient()
     runtime = DirectRuntime(registry=SessionRegistry(), client=client)
@@ -124,25 +188,6 @@ async def test_tilemap_get_cells_handler_forwards_command_and_params():
 
     assert client.calls[-1]["command"] == "tilemap_get_cells"
     assert client.calls[-1]["params"] == {"path": "/Main/Ground"}
-
-
-async def test_tileset_generate_specialized_forwards_root_dir():
-    client = StubClient()
-    runtime = DirectRuntime(registry=SessionRegistry(), client=client)
-
-    await tileset_handlers.tileset_generate_specialized(
-        runtime,
-        biom="volcano",
-        layer_sources={"floor": [0, 5]},
-        root_dir="res://biomes",
-    )
-
-    assert client.calls[-1]["command"] == "tileset_generate_specialized"
-    assert client.calls[-1]["params"] == {
-        "biom": "volcano",
-        "layer_sources": {"floor": [0, 5]},
-        "root_dir": "res://biomes",
-    }
 
 
 async def test_tileset_get_atlas_tiles_calls_send_command():
@@ -166,8 +211,8 @@ async def test_tileset_get_atlas_tiles_returns_result_unchanged():
     expected = {"data": {"tiles": [{"col": 0, "row": 0}], "count": 1}}
 
     class FixedClient(StubClient):
-        async def send(self, command, params=None, session_id=None, timeout=5.0):
-            await super().send(command, params, session_id, timeout)
+        async def send(self, command, params=None, session_id=None, timeout=5.0, surface_error_hints=True):
+            await super().send(command, params, session_id, timeout, surface_error_hints)
             return expected
 
     client = FixedClient()
@@ -191,6 +236,7 @@ async def test_tileset_get_atlas_tiles_does_not_call_require_writable():
     with patch(
         "godot_ai.handlers.tileset.require_writable_async",
         new_callable=AsyncMock,
+        create=True,
     ) as mock_require_writable:
         await tileset_handlers.tileset_get_atlas_tiles(
             runtime,

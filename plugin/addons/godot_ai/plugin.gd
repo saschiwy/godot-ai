@@ -406,7 +406,6 @@ func _enter_tree() -> void:
 	_dispatcher.register("tilemap_set_cells_rect",        tilemap_handler.set_cells_rect)
 	_dispatcher.register("tilemap_clear",                 tilemap_handler.clear_layer)
 	_dispatcher.register("tilemap_get_cells",             tilemap_handler.get_used_cells)
-	_dispatcher.register("tileset_generate_specialized",  tileset_handler.generate_specialized_tilesets)
 	_dispatcher.register("tileset_get_atlas_tiles",        tileset_handler.get_atlas_tiles)
 	_dispatcher.register("tileset_get_atlas_image",        tileset_handler.get_atlas_image)
 

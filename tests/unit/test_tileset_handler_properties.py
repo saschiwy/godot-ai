@@ -39,6 +39,7 @@ class _FixedReturnClient:
         params: dict | None = None,
         session_id: str | None = None,
         timeout: float = 5.0,
+        surface_error_hints: bool = True,
     ) -> dict:
         self.calls.append({"command": command, "params": params or {}})
         return self._return_value
@@ -151,6 +152,7 @@ def test_property_3_no_write_readiness_gate(tileset_path: str, source_id: int) -
         with patch(
             "godot_ai.handlers.tileset.require_writable_async",
             side_effect=_spy_require_writable,
+            create=True,
         ):
             await tileset_handlers.tileset_get_atlas_tiles(
                 runtime, tileset_path=tileset_path, source_id=source_id

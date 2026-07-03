@@ -189,10 +189,9 @@ func test_valid_source_returns_correct_shape() -> void:
 	assert_eq(tile.row, 3, "row should match atlas y-coordinate")
 
 
-func test_source_index_uses_tileset_order_not_raw_source_id() -> void:
-	## Regression: source_id parameter is documented as source index, not raw source-id.
-	## TileSet source IDs can be sparse/non-contiguous; querying index 1 must resolve
-	## via get_source_id(1), not get_source(1).
+func test_source_id_uses_raw_tileset_source_id() -> void:
+	## Regression: source_id must be treated as raw TileSet source id.
+	## Sparse/non-contiguous ids must be addressable by their real id values.
 	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
 	img.fill(Color.WHITE)
 	var tex := ImageTexture.create_from_image(img)
@@ -217,12 +216,15 @@ func test_source_index_uses_tileset_order_not_raw_source_id() -> void:
 		skip("Could not save temporary resource")
 		return
 
-	var result := _handler.get_atlas_tiles({"tileset_path": path, "source_id": 1})
+	var result := _handler.get_atlas_tiles({"tileset_path": path, "source_id": 42})
 	assert_has_key(result, "data")
-	assert_eq(result.data.count, 1, "index 1 should resolve the second source")
+	assert_eq(result.data.count, 1, "raw source id 42 should resolve the second source")
 	assert_eq(result.data.tiles.size(), 1)
 	assert_eq(result.data.tiles[0].col, 7)
 	assert_eq(result.data.tiles[0].row, 9)
+
+	var wrong_id := _handler.get_atlas_tiles({"tileset_path": path, "source_id": 1})
+	assert_is_error(wrong_id, ErrorCodes.VALUE_OUT_OF_RANGE)
 
 
 # ---------------------------------------------------------------------------

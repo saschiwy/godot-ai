@@ -424,7 +424,13 @@ func take_screenshot(params: Dictionary) -> Dictionary:
 			if scene_root_2d == null:
 				return ErrorCodes.make(ErrorCodes.EDITOR_NOT_READY,
 					"No scene open — open a scene first")
+			if not view_target.is_empty() or coverage or custom_elevation != null or custom_azimuth != null or custom_fov != null:
+				return ErrorCodes.make(
+					ErrorCodes.INVALID_PARAMS,
+					"view_target, coverage, elevation, azimuth, and fov are not supported with source='viewport_2d'"
+				)
 			## Capture the 2D editor viewport directly; no view_target/coverage for 2D.
+			RenderingServer.force_draw(false)
 			var image_2d: Image = viewport.get_texture().get_image()
 			if image_2d == null or image_2d.is_empty():
 				return _empty_image_error(
@@ -686,7 +692,7 @@ static func viewport_screenshot_precheck(scene_root: Node) -> Dictionary:
 		return {}
 	var root_type := scene_root.get_class()
 	var hint: String
-	var is_2d_scene := scene_root is Node2D or scene_root is CanvasItem
+	var is_2d_scene := scene_root is CanvasItem
 	if is_2d_scene:
 		hint = (
 			"The 3D viewport is empty because the current scene is 2D (%s root) with no Node3D descendants. "

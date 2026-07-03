@@ -177,10 +177,12 @@ def register_editor_tools(mcp: FastMCP, *, include_non_core: bool = True) -> Non
         and an actionable ``error.message`` — switch to ``"cinematic"`` if the
         scene has a Camera3D, or open a scene with 3D content.
 
-        Sources:
-        - "viewport" (default): editor 3D viewport. Requires Node3D content in
-          the edited scene (root or any descendant); see above for the
-          no-3D-content / no-scene error shape.
+                Sources:
+                - "viewport" (default): editor 3D viewport. Requires Node3D content in
+                    the edited scene (root or any descendant); see above for the
+                    no-3D-content / no-scene error shape.
+                - "viewport_2d": editor 2D viewport. Use for 2D scenes.
+                    Not compatible with view_target/coverage/elevation/azimuth/fov.
         - "cinematic": render edited scene through its active Camera3D (no
           editor gizmos). Prefers a Camera3D marked ``current``; falls back to
           the first Camera3D found in a depth-first walk. NODE_NOT_FOUND only
@@ -193,7 +195,7 @@ def register_editor_tools(mcp: FastMCP, *, include_non_core: bool = True) -> Non
         captures perspective + orthographic top-down references.
 
         Args:
-            source: "viewport" | "cinematic" | "game". Default "viewport".
+            source: "viewport" | "viewport_2d" | "cinematic" | "game". Default "viewport".
             max_resolution: Longest-edge resolution. Default 640. 0 = full res.
             include_image: Return image data. Default True.
             view_target: Node3D scene path(s) to frame, comma-separated.

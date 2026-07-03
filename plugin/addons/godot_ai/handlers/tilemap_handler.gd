@@ -68,7 +68,7 @@ func set_cells_rect(params: Dictionary) -> Dictionary:
 	_undo_redo.create_action("MCP: TileMap set_cells_rect %dx%d" % [rw, rh])
 	for pos in cells:
 		_undo_redo.add_do_method(node, "set_cell", pos, src, atlas)
-	_undo_redo.add_undo_method(self, "_restore_cells_snapshot", node, snapshot)
+	_undo_redo.add_undo_method(self, "_restore_rect_snapshot", node, snapshot)
 	_undo_redo.commit_action()
 	return {"data": {"cells_filled": cells.size(),
 		"rect": {"x": rx, "y": ry, "w": rw, "h": rh}, "undoable": true}}
@@ -110,6 +110,8 @@ func _resolve_layer(params: Dictionary) -> Dictionary:
 	if scene_root == null:
 		return ErrorCodes.make(ErrorCodes.EDITOR_NOT_READY, "No scene open")
 	var path: String = params.get("path", "")
+	if path.is_empty():
+		return ErrorCodes.make(ErrorCodes.MISSING_REQUIRED_PARAM, "Missing required param: path")
 	var node := McpScenePath.resolve(path, scene_root)
 	if node == null:
 		return ErrorCodes.make(ErrorCodes.NODE_NOT_FOUND, "Node not found: %s" % path)
@@ -143,6 +145,11 @@ func _capture_used_cells_snapshot(node: TileMapLayer) -> Array[Dictionary]:
 
 func _restore_cells_snapshot(node: TileMapLayer, snapshot: Array[Dictionary]) -> void:
 	node.clear()
+	for entry in snapshot:
+		_restore_cell_state(node, entry.pos, entry.state)
+
+
+func _restore_rect_snapshot(node: TileMapLayer, snapshot: Array[Dictionary]) -> void:
 	for entry in snapshot:
 		_restore_cell_state(node, entry.pos, entry.state)
 

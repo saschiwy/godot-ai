@@ -3,10 +3,8 @@ extends McpTestSuite
 
 const ErrorCodes := preload("res://addons/godot_ai/utils/error_codes.gd")
 const TilemapHandler := preload("res://addons/godot_ai/handlers/tilemap_handler.gd")
-const TilesetHandler := preload("res://addons/godot_ai/handlers/tileset_handler.gd")
 
 var _tilemap_handler: TilemapHandler
-var _tileset_handler: TilesetHandler
 var _undo_redo: EditorUndoRedoManager
 var _created_nodes: Array[Node] = []
 var _created_files: Array[String] = []
@@ -20,7 +18,6 @@ func suite_name() -> String:
 func suite_setup(ctx: Dictionary) -> void:
 	_undo_redo = ctx.get("undo_redo")
 	_tilemap_handler = TilemapHandler.new(_undo_redo)
-	_tileset_handler = TilesetHandler.new()
 
 
 func teardown() -> void:
@@ -148,35 +145,58 @@ func test_tilemap_clear_is_undoable() -> void:
 	assert_eq(restored.data.count, 2)
 
 
-func test_tileset_generate_specialized_with_root_dir() -> void:
-	var root_dir := "res://tests/_mcp_tileset"
-	var biom := "volcano"
-	var biom_dir := "%s/%s" % [root_dir, biom]
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(biom_dir))
-	_created_dirs.append(biom_dir)
-	_created_dirs.append(root_dir)
+func test_tilemap_rect_fill_undo_preserves_outside_tiles() -> void:
+	var ctx := _create_layer("_McpTileLayerRectUndo")
+	if ctx.is_empty():
+		skip("No scene open")
+		return
+	var path: String = ctx.path
 
-	var main_path := "%s/%s.tres" % [biom_dir, biom]
-	var save_err := ResourceSaver.save(_make_test_tileset(), main_path)
-	assert_eq(save_err, OK)
-	_created_files.append(main_path)
-
-	var generated := _tileset_handler.generate_specialized_tilesets({
-		"biom": biom,
-		"root_dir": root_dir,
-		"layer_sources": {"floor": [0]},
+	## Seed tiles outside the rect that will be filled.
+	var seed_a := _tilemap_handler.set_cell({
+		"path": path,
+		"source_id": 0,
+		"atlas_col": 0,
+		"atlas_row": 0,
+		"map_x": -5,
+		"map_y": -5,
 	})
-	assert_has_key(generated, "data")
-	assert_eq(generated.data.created.size(), 1)
-	var expected_output := "%s/%s_floor.tres" % [biom_dir, biom]
-	assert_contains(generated.data.created, expected_output)
-	assert_true(ResourceLoader.exists(expected_output), "specialized .tres should be written")
-	_created_files.append(expected_output)
-
-	var rerun := _tileset_handler.generate_specialized_tilesets({
-		"biom": biom,
-		"root_dir": root_dir,
-		"layer_sources": {"floor": [0]},
+	var seed_b := _tilemap_handler.set_cell({
+		"path": path,
+		"source_id": 0,
+		"atlas_col": 0,
+		"atlas_row": 0,
+		"map_x": 10,
+		"map_y": 10,
 	})
-	assert_has_key(rerun, "data")
-	assert_contains(rerun.data.skipped, expected_output)
+	assert_has_key(seed_a, "data")
+	assert_has_key(seed_b, "data")
+
+	var fill := _tilemap_handler.set_cells_rect({
+		"path": path,
+		"source_id": 0,
+		"atlas_col": 0,
+		"atlas_row": 0,
+		"rect_x": 0,
+		"rect_y": 0,
+		"rect_w": 2,
+		"rect_h": 2,
+	})
+	assert_has_key(fill, "data")
+
+	var after_fill := _tilemap_handler.get_used_cells({"path": path})
+	assert_eq(after_fill.data.count, 6)
+
+	var did_undo := editor_undo(_undo_redo)
+	assert_true(did_undo, "undo should succeed")
+
+	var after_undo := _tilemap_handler.get_used_cells({"path": path})
+	assert_eq(after_undo.data.count, 2, "Undo of rect fill must not clear tiles outside rect")
+
+	var seen := {}
+	for entry in after_undo.data.cells:
+		seen["%s,%s" % [entry.x, entry.y]] = true
+	assert_true(seen.has("-5,-5"))
+	assert_true(seen.has("10,10"))
+
+
