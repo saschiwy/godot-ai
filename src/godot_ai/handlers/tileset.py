@@ -62,7 +62,7 @@ async def tileset_get_atlas_tiles(
         source_id:     Integer index of the ``TileSetAtlasSource`` to query.
 
     Returns:
-        ``{"tiles": [{"col": int, "row": int}, ...], "count": int}`` on
+        ``{"data": {"tiles": [{"col": int, "row": int}, ...], "count": int}}`` on
         success, or an error dict from the GDScript handler.
     """
     return await runtime.send_command(
@@ -94,8 +94,8 @@ async def tileset_get_atlas_image(
                        this many pixels.  0 (default) = full resolution.
 
     Returns:
-        ``{"image_base64": str, "width": int, "height": int,
-           "original_width": int, "original_height": int, "format": "png"}``
+          ``{"data": {"image_base64": str, "width": int, "height": int,
+              "original_width": int, "original_height": int, "format": "png"}}``
         on success, or an error dict from the GDScript handler.
     """
     return await runtime.send_command(

@@ -39,15 +39,16 @@ func _cleanup_runtime_artifacts() -> void:
 	_created_nodes.clear()
 
 	for path in _created_files:
-		if ResourceLoader.exists(path):
-			DirAccess.remove_absolute(path)
-		var uid_path := "%s.uid" % path
+		var abs_path := ProjectSettings.globalize_path(path)
+		if FileAccess.file_exists(abs_path):
+			DirAccess.remove_absolute(abs_path)
+		var uid_path := abs_path + ".uid"
 		if FileAccess.file_exists(uid_path):
 			DirAccess.remove_absolute(uid_path)
 	_created_files.clear()
 
 	for i in range(_created_dirs.size() - 1, -1, -1):
-		DirAccess.remove_absolute(_created_dirs[i])
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(_created_dirs[i]))
 	_created_dirs.clear()
 
 
@@ -96,6 +97,7 @@ func test_tilemap_set_and_get_cells() -> void:
 		"map_y": 3,
 	})
 	assert_has_key(result, "data")
+	assert_true(result.data.undoable)
 
 	var cells := _tilemap_handler.get_used_cells({"path": path})
 	assert_has_key(cells, "data")
@@ -129,10 +131,13 @@ func test_tilemap_clear_is_undoable() -> void:
 	})
 	assert_has_key(a, "data")
 	assert_has_key(b, "data")
+	assert_true(a.data.undoable)
+	assert_true(b.data.undoable)
 
 	var cleared := _tilemap_handler.clear_layer({"path": path})
 	assert_has_key(cleared, "data")
 	assert_true(cleared.data.cleared)
+	assert_true(cleared.data.undoable)
 
 	var after_clear := _tilemap_handler.get_used_cells({"path": path})
 	assert_eq(after_clear.data.count, 0)

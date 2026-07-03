@@ -43,7 +43,7 @@ Ops:
         volcano_animated.tres. Use the remapped ID in tilemap_manage calls.
 
         Hard stop: if the main {biom}.tres does not exist, the command
-        returns NODE_NOT_FOUND with a hint to run setup_{biom}.gd first.
+        returns RESOURCE_NOT_FOUND with a hint to run setup_{biom}.gd first.
 
   • tileset_get_atlas_tiles(tileset_path, source_id)
         Return all occupied atlas tile positions for one source in a TileSet.

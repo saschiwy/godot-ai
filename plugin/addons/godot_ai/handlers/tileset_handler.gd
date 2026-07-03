@@ -8,6 +8,7 @@ extends RefCounted
 ## from 0. The main {biom}.tres is never modified.
 
 const ErrorCodes := preload("res://addons/godot_ai/utils/error_codes.gd")
+const McpPathValidator := preload("res://addons/godot_ai/utils/path_validator.gd")
 
 
 func _init() -> void:
@@ -31,51 +32,91 @@ func generate_specialized_tilesets(params: Dictionary) -> Dictionary:
 	var biom: String = params.get("biom", "")
 	if biom.is_empty():
 		return ErrorCodes.make(ErrorCodes.INVALID_PARAMS, "'biom' parameter is required")
+	var biom_err := _validate_segment_name(biom, "biom")
+	if biom_err != null:
+		return biom_err
 
 	var root_dir: String = params.get("root_dir", "res://").strip_edges()
 	if root_dir.is_empty():
 		root_dir = "res://"
 	if not root_dir.ends_with("/"):
 		root_dir += "/"
+	var root_dir_err := McpPathValidator.path_error(root_dir, "root_dir", true)
+	if root_dir_err != null:
+		return root_dir_err
 
 	var main_path := "%s%s/%s.tres" % [root_dir, biom, biom]
+	var main_path_err := McpPathValidator.path_error(main_path, "main_path")
+	if main_path_err != null:
+		return main_path_err
 	if not ResourceLoader.exists(main_path):
 		return ErrorCodes.make(
-			ErrorCodes.NODE_NOT_FOUND,
+			ErrorCodes.RESOURCE_NOT_FOUND,
 			"Main TileSet not found: %s" % main_path
 		)
 
-	var main_ts: TileSet = load(main_path)
-	if main_ts == null:
+	var main_res := load(main_path)
+	if main_res == null:
 		return ErrorCodes.make(ErrorCodes.INTERNAL_ERROR,
 			"Failed to load TileSet: %s" % main_path)
+	if not (main_res is TileSet):
+		return ErrorCodes.make(
+			ErrorCodes.WRONG_TYPE,
+			"Resource at '%s' is not a TileSet (got %s)" % [main_path, main_res.get_class()]
+		)
+	var main_ts: TileSet = main_res
 
 	var layer_sources: Dictionary = params.get("layer_sources", {})
 	if layer_sources.is_empty():
 		return ErrorCodes.make(ErrorCodes.INVALID_PARAMS,
 			"'layer_sources' parameter is required (e.g. {\"floor\": [0, 5, 6]})")
 
+	var normalized_layer_sources: Dictionary = {}
+	for layer_name in layer_sources:
+		var layer_key := str(layer_name)
+		var layer_name_err := _validate_segment_name(layer_key, "layer_name")
+		if layer_name_err != null:
+			return layer_name_err
+		var source_ids_value: Variant = layer_sources[layer_name]
+		if not source_ids_value is Array:
+			return ErrorCodes.make(
+				ErrorCodes.WRONG_TYPE,
+				"layer_sources['%s'] must be an Array of source ids" % layer_key
+			)
+		var normalized_ids: Array[int] = []
+		for raw_id in source_ids_value:
+			var source_id := int(raw_id)
+			var src := main_ts.get_source(source_id)
+			if src == null:
+				return ErrorCodes.make(
+					ErrorCodes.VALUE_OUT_OF_RANGE,
+					"layer_sources['%s'] contains invalid source_id %d" % [layer_key, source_id]
+				)
+			normalized_ids.append(source_id)
+		normalized_layer_sources[layer_key] = normalized_ids
+
 	var created: Array[String] = []
 	var skipped: Array[String] = []
 
-	for layer_name in layer_sources:
+	for layer_name in normalized_layer_sources:
 		var output_path := "%s%s/%s_%s.tres" % [root_dir, biom, biom, layer_name]
+		var output_path_err := McpPathValidator.path_error(output_path, "output_path", true)
+		if output_path_err != null:
+			return output_path_err
 
 		if ResourceLoader.exists(output_path):
 			skipped.append(output_path)
 			continue
 
-		var source_ids: Array = layer_sources[layer_name]
+		var source_ids: Array[int] = normalized_layer_sources[layer_name]
 		var new_ts := TileSet.new()
 		new_ts.tile_size = main_ts.tile_size
+		_copy_layer_definitions(main_ts, new_ts)
 
 		var new_id := 0
 		for src_id in source_ids:
 			var src := main_ts.get_source(int(src_id))
-			if src == null:
-				push_error("tileset_handler: Source %d not found in %s — skipping" % [src_id, main_path])
-				continue
-			new_ts.add_source(src, new_id)
+			new_ts.add_source(src.duplicate(true), new_id)
 			new_id += 1
 
 		var err := ResourceSaver.save(new_ts, output_path)
@@ -87,6 +128,54 @@ func generate_specialized_tilesets(params: Dictionary) -> Dictionary:
 		created.append(output_path)
 
 	return {"data": {"created": created, "skipped": skipped}}
+
+
+func _validate_segment_name(value: String, field_name: String) -> Variant:
+	if value.strip_edges() != value:
+		return ErrorCodes.make(ErrorCodes.VALUE_OUT_OF_RANGE, "%s must not start/end with whitespace" % field_name)
+	if value.is_empty():
+		return ErrorCodes.make(ErrorCodes.MISSING_REQUIRED_PARAM, "%s must not be empty" % field_name)
+	if value.contains("/") or value.contains("\\"):
+		return ErrorCodes.make(ErrorCodes.VALUE_OUT_OF_RANGE, "%s must not contain path separators" % field_name)
+	if value.contains(".."):
+		return ErrorCodes.make(ErrorCodes.VALUE_OUT_OF_RANGE, "%s must not contain '..'" % field_name)
+	if value.contains(":"):
+		return ErrorCodes.make(ErrorCodes.VALUE_OUT_OF_RANGE, "%s must not contain ':'" % field_name)
+	return null
+
+
+func _copy_layer_definitions(main_ts: TileSet, new_ts: TileSet) -> void:
+	for i in range(main_ts.get_physics_layers_count()):
+		new_ts.add_physics_layer(i)
+		new_ts.set_physics_layer_collision_layer(i, main_ts.get_physics_layer_collision_layer(i))
+		new_ts.set_physics_layer_collision_mask(i, main_ts.get_physics_layer_collision_mask(i))
+		new_ts.set_physics_layer_name(i, main_ts.get_physics_layer_name(i))
+
+	for i in range(main_ts.get_navigation_layers_count()):
+		new_ts.add_navigation_layer(i)
+		new_ts.set_navigation_layer_layers(i, main_ts.get_navigation_layer_layers(i))
+		new_ts.set_navigation_layer_name(i, main_ts.get_navigation_layer_name(i))
+
+	for i in range(main_ts.get_occlusion_layers_count()):
+		new_ts.add_occlusion_layer(i)
+		new_ts.set_occlusion_layer_light_mask(i, main_ts.get_occlusion_layer_light_mask(i))
+		new_ts.set_occlusion_layer_sdf_collision(i, main_ts.get_occlusion_layer_sdf_collision(i))
+		new_ts.set_occlusion_layer_name(i, main_ts.get_occlusion_layer_name(i))
+
+	for i in range(main_ts.get_custom_data_layers_count()):
+		new_ts.add_custom_data_layer(i)
+		new_ts.set_custom_data_layer_name(i, main_ts.get_custom_data_layer_name(i))
+		new_ts.set_custom_data_layer_type(i, main_ts.get_custom_data_layer_type(i))
+
+	for set_idx in range(main_ts.get_terrain_sets_count()):
+		new_ts.add_terrain_set(set_idx)
+		new_ts.set_terrain_set_mode(set_idx, main_ts.get_terrain_set_mode(set_idx))
+		new_ts.set_terrain_set_color(set_idx, main_ts.get_terrain_set_color(set_idx))
+		new_ts.set_terrain_set_name(set_idx, main_ts.get_terrain_set_name(set_idx))
+		for terrain_idx in range(main_ts.get_terrains_count(set_idx)):
+			new_ts.add_terrain(set_idx, terrain_idx)
+			new_ts.set_terrain_name(set_idx, terrain_idx, main_ts.get_terrain_name(set_idx, terrain_idx))
+			new_ts.set_terrain_color(set_idx, terrain_idx, main_ts.get_terrain_color(set_idx, terrain_idx))
 
 
 ## Query all occupied atlas tile positions for a single source.

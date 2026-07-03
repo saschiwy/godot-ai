@@ -8,6 +8,7 @@ extends RefCounted
 ## scene-relative path (e.g. "/LavaLake20x20/Ground").
 
 const ErrorCodes := preload("res://addons/godot_ai/utils/error_codes.gd")
+const MAX_RECT_FILL_CELLS := 4096
 
 var _undo_redo: EditorUndoRedoManager
 
@@ -32,7 +33,7 @@ func set_cell(params: Dictionary) -> Dictionary:
 	_undo_redo.add_undo_method(self, "_restore_cell_state", node, pos, prev)
 	_undo_redo.commit_action()
 	return {"data": {"map_x": pos.x, "map_y": pos.y, "source_id": src,
-		"atlas_col": atlas.x, "atlas_row": atlas.y}}
+		"atlas_col": atlas.x, "atlas_row": atlas.y, "undoable": true}}
 
 
 ## Fill a rectangular region with one tile type in a single undo action.
@@ -46,6 +47,17 @@ func set_cells_rect(params: Dictionary) -> Dictionary:
 	var atlas := Vector2i(params.get("atlas_col", 0), params.get("atlas_row", 0))
 	var rx    := int(params.get("rect_x", 0));  var ry := int(params.get("rect_y", 0))
 	var rw    := int(params.get("rect_w", 1));  var rh := int(params.get("rect_h", 1))
+	if rw <= 0 or rh <= 0:
+		return ErrorCodes.make(
+			ErrorCodes.VALUE_OUT_OF_RANGE,
+			"rect_w and rect_h must be > 0 (got %d x %d)" % [rw, rh]
+		)
+	var cell_count := rw * rh
+	if cell_count > MAX_RECT_FILL_CELLS:
+		return ErrorCodes.make(
+			ErrorCodes.VALUE_OUT_OF_RANGE,
+			"Rect too large: %d cells exceeds max %d" % [cell_count, MAX_RECT_FILL_CELLS]
+		)
 	var cells: Array[Vector2i] = []
 	var snapshot: Array[Dictionary] = []
 	for x in range(rx, rx + rw):
@@ -59,7 +71,7 @@ func set_cells_rect(params: Dictionary) -> Dictionary:
 	_undo_redo.add_undo_method(self, "_restore_cells_snapshot", node, snapshot)
 	_undo_redo.commit_action()
 	return {"data": {"cells_filled": cells.size(),
-		"rect": {"x": rx, "y": ry, "w": rw, "h": rh}}}
+		"rect": {"x": rx, "y": ry, "w": rw, "h": rh}, "undoable": true}}
 
 
 ## Remove all tiles from a TileMapLayer.
@@ -74,7 +86,7 @@ func clear_layer(params: Dictionary) -> Dictionary:
 	_undo_redo.add_do_method(node, "clear")
 	_undo_redo.add_undo_method(self, "_restore_cells_snapshot", node, snapshot)
 	_undo_redo.commit_action()
-	return {"data": {"cleared": true}}
+	return {"data": {"cleared": true, "undoable": true}}
 
 
 ## Return all used cell coordinates.

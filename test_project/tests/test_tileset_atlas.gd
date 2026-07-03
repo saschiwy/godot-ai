@@ -5,9 +5,9 @@ extends McpTestSuite
 ##
 ## Validates: Requirements 1.1–1.11, 7.1–7.4
 ##
-## This suite tests the get_atlas_tiles method which does not yet exist — the
-## tests are written against the specified API so that implementing the method
-## makes all tests pass without modification.
+## This suite tests the get_atlas_tiles method and its parameter validation.
+## It is written against the public handler contract so regressions in shape,
+## ordering, or error codes are caught by CI.
 
 const ErrorCodes := preload("res://addons/godot_ai/utils/error_codes.gd")
 const TilesetHandler := preload("res://addons/godot_ai/handlers/tileset_handler.gd")
